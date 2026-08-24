@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/shubh-pixel-reveal.svg" width="300" alt="SHUBH pixel portrait">
+<img src="assets/shubh-profile-top-to-bottom.svg" width="300" alt="SHUBH profile image">
 
 <br>
 
