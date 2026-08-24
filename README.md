@@ -1,6 +1,6 @@
 <div align="center">
 
-
+<img src="assets/sadie-sink.svg" width="300" alt="Profile image">
 
 <br>
 
