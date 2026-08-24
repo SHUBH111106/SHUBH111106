@@ -15,7 +15,9 @@
 <a href="mailto:gargshubh061@gmail.com"><img src="https://img.shields.io/badge/Email-EA4335?style=for-the-badge&logo=gmail&logoColor=white" alt="Email"></a>
 <a href="https://leetcode.com/u/ShubhGarg1111"><img src="https://img.shields.io/badge/LeetCode-FFA116?style=for-the-badge&logo=leetcode&logoColor=black" alt="LeetCode"></a>
 
-<img src="https://komarev.com/ghpvc/?username=gargibhardwaj24&style=flat&color=39d353&label=profile+views" alt="profile views">
+<div align="center">
+
+<img src="https://komarev.com/ghpvc/?username=SHUBH111106&style=flat&color=39d353&label=profile+views" alt="profile views">
 
 </div>
 <h2 align="center">🔥 LeetCode Stats</h2>
