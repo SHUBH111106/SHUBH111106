@@ -1,7 +1,6 @@
 <div align="center">
 
-<img src="assets/shubh-profile-top-to-bottom.svg" width="300" alt="SHUBH profile image">
-
+<img src="assets/shubh-dot-matrix-portrait.svg" width="300" alt="SHUBH dot-matrix portrait">
 <br>
 
 <a href="https://github.com/SHUBH111106">
