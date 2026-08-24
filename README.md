@@ -1,3 +1,16 @@
+<div align="center">
+
+<img src="assets/sadie-sink.jpg" width="300" alt="Profile image">
+
+<br>
+
+<a href="https://github.com/SHUBH111106">
+  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=26&duration=2600&pause=900&color=39D353&center=true&vCenter=true&width=560&lines=SHUBH;Java+%26+DSA;Computer+Science+Student;Competitive+Programmer;01100011+01101111+01100100+01100101" alt="typing banner">
+</a>
+
+<br>
+
+</div>
 <h2 align="center">🔥 LeetCode Stats</h2>
 
 <p align="center">
