@@ -22,44 +22,74 @@
 
 <div align="center">
 
-## `~/` selected work
+<div align="center">
 
-<table>
-<tr>
+## `~/` contribution calendar
 
-<td width="50%">
-  <a href="https://github.com/SHUBH111106/REPOSITORY-1">
-    <img src="assets/card-repository-1.svg" width="420" alt="Repository 1">
-  </a>
-</td>
+<!-- 3D isometric contribution calendar -->
+<img src="assets/metrics.isocalendar.svg" width="90%" alt="3D isometric contribution calendar">
 
-<td width="50%">
-  <a href="https://github.com/SHUBH111106/REPOSITORY-2">
-    <img src="assets/card-repository-2.svg" width="420" alt="Repository 2">
-  </a>
-</td>
+<br><br>
 
-</tr>
+<!-- Snake eats the contribution graph -->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake-dark.svg">
 
-<tr>
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake.svg">
 
-<td width="50%">
-  <a href="https://github.com/SHUBH111106/REPOSITORY-3">
-    <img src="assets/card-repository-3.svg" width="420" alt="Repository 3">
-  </a>
-</td>
-
-<td width="50%">
-  <a href="https://github.com/SHUBH111106/REPOSITORY-4">
-    <img src="assets/card-repository-4.svg" width="420" alt="Repository 4">
-  </a>
-</td>
-
-</tr>
-</table>
+  <img
+    src="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake.svg"
+    width="100%"
+    alt="snake eating the contribution graph">
+</picture>
 
 </div>
 
+---
+
+<div align="center">
+
+## `~/` the numbers
+
+<!-- GitHub statistics -->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/card-stats-dark.svg">
+
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="assets/card-stats-light.svg">
+
+  <img
+    src="assets/card-stats-dark.svg"
+    width="480"
+    alt="GitHub statistics">
+</picture>
+
+<br>
+
+<!-- Most used languages -->
+<img
+  src="assets/metrics.languages.svg"
+  height="165"
+  alt="most used languages">
+
+<br><br>
+
+<!-- Achievements -->
+<img
+  src="assets/metrics.achievements.svg"
+  width="90%"
+  alt="achievements">
+
+</div>
+
+---
 </div>
 <h2 align="center">🔥 LeetCode Stats</h2>
 
