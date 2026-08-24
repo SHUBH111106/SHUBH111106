@@ -20,6 +20,46 @@
 
 <img src="https://komarev.com/ghpvc/?username=SHUBH111106&style=flat&color=39d353&label=profile+views" alt="profile views">
 
+<div align="center">
+
+## `~/` selected work
+
+<table>
+<tr>
+
+<td width="50%">
+  <a href="https://github.com/SHUBH111106/REPOSITORY-1">
+    <img src="assets/card-repository-1.svg" width="420" alt="Repository 1">
+  </a>
+</td>
+
+<td width="50%">
+  <a href="https://github.com/SHUBH111106/REPOSITORY-2">
+    <img src="assets/card-repository-2.svg" width="420" alt="Repository 2">
+  </a>
+</td>
+
+</tr>
+
+<tr>
+
+<td width="50%">
+  <a href="https://github.com/SHUBH111106/REPOSITORY-3">
+    <img src="assets/card-repository-3.svg" width="420" alt="Repository 3">
+  </a>
+</td>
+
+<td width="50%">
+  <a href="https://github.com/SHUBH111106/REPOSITORY-4">
+    <img src="assets/card-repository-4.svg" width="420" alt="Repository 4">
+  </a>
+</td>
+
+</tr>
+</table>
+
+</div>
+
 </div>
 <h2 align="center">🔥 LeetCode Stats</h2>
 
