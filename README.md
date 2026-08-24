@@ -1,6 +1,6 @@
 <div align="center">
 
-
+<img src="assets/shubh-profile.svg" width="300" alt="SHUBH profile image">
 
 <br>
 
