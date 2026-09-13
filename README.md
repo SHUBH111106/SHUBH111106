@@ -38,21 +38,13 @@ CS student focused on Java and DSA, working through competitive programming prob
 
 <br><br>
 
-<!-- Snake eats the contribution graph -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake.svg">
-  <img src="https://raw.githubusercontent.com/SHUBH111106/SHUBH111106/output/snake.svg" width="100%" alt="snake eating the contribution graph">
-</picture>
-
-</div>
-
----
-
-<div align="center">
-
-## `~/` projects
-
+<p align="center">
+  <img
+    src="./assets/gravity-drop.gif"
+    width="900"
+    alt="Contribution Gravity Drop"
+  />
+</p>
 <!--
 Pin 2-3 of your best repos here. For each: name, one-line description, and tech stack badges.
 Example:
