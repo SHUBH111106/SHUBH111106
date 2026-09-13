@@ -297,6 +297,7 @@ def simulate_lava(base_grid, frame):
                     0 <= ny < ROWS and
                     0 <= nx < MAX_WEEKS
                 ):
+
                     neighbors.append(
                         heat[ny][nx]
                     )
@@ -533,12 +534,102 @@ def draw_lava_cell(
 
 
 # ============================================================
+# CALENDAR LABELS
+# ============================================================
+
+def draw_calendar_labels(draw, weeks):
+
+    # --------------------------------------------------------
+    # WEEKDAY LABELS
+    # --------------------------------------------------------
+
+    weekday_labels = [
+    ("Sun", 0),
+    ("Mon", 1),
+    ("Tue", 2),
+    ("Wed", 3),
+    ("Thu", 4),
+    ("Fri", 5),
+    ("Sat", 6),
+]
+
+    for label, row in weekday_labels:
+
+        py = (
+            TOP +
+            row * (CELL + GAP) +
+            2
+        )
+
+        draw.text(
+            (8, py),
+            label,
+            fill=(95, 100, 115)
+        )
+
+    # --------------------------------------------------------
+    # MONTH LABELS
+    # --------------------------------------------------------
+
+    recent = weeks[-MAX_WEEKS:]
+
+    month_names = {
+        "01": "Jan",
+        "02": "Feb",
+        "03": "Mar",
+        "04": "Apr",
+        "05": "May",
+        "06": "Jun",
+        "07": "Jul",
+        "08": "Aug",
+        "09": "Sep",
+        "10": "Oct",
+        "11": "Nov",
+        "12": "Dec",
+    }
+
+    last_month = None
+
+    for x, week in enumerate(recent):
+
+        if not week["contributionDays"]:
+            continue
+
+        date_string = (
+            week["contributionDays"][0]["date"]
+        )
+
+        month = date_string[5:7]
+
+        if month != last_month:
+
+            label = month_names.get(
+                month,
+                month
+            )
+
+            px = (
+                LEFT +
+                x * (CELL + GAP)
+            )
+
+            draw.text(
+                (px, TOP - 20),
+                label,
+                fill=(95, 100, 115)
+            )
+
+            last_month = month
+
+
+# ============================================================
 # FRAME GENERATION
 # ============================================================
 
 def generate_frame(
     base_grid,
-    frame
+    frame,
+    weeks
 ):
 
     heat = simulate_lava(
@@ -568,6 +659,15 @@ def generate_frame(
         (LEFT, 39),
         "activity is molten",
         fill=(120, 100, 100)
+    )
+
+    # ========================================================
+    # CALENDAR LABELS
+    # ========================================================
+
+    draw_calendar_labels(
+        draw,
+        weeks
     )
 
     # ========================================================
@@ -611,7 +711,6 @@ def generate_frame(
 
             # Don't completely erase empty GitHub cells
             if intensity < 0.15:
-
                 intensity = 0
 
             px = (
@@ -664,7 +763,8 @@ def generate_animation(weeks):
         frames.append(
             generate_frame(
                 base_grid,
-                frame
+                frame,
+                weeks
             )
         )
 
@@ -721,15 +821,19 @@ def main():
     print(
         "================================"
     )
+
     print(
         f"Output : {OUTPUT}"
     )
+
     print(
         f"Frames : {len(frames)}"
     )
+
     print(
         f"Size   : {WIDTH} × {HEIGHT}"
     )
+
     print(
         f"FPS    : {FPS}"
     )
