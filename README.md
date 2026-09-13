@@ -40,9 +40,9 @@ CS student focused on Java and DSA, working through competitive programming prob
 
 <p align="center">
   <img
-    src="./assets/gravity-drop.gif"
+    src="./assets/lava-flow.gif"
     width="900"
-    alt="Contribution Gravity Drop"
+    alt="Contribution Heat"
   />
 </p>
 <!--
