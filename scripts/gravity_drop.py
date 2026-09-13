@@ -1,8 +1,9 @@
 import os
-import requests
 import math
+import random
+import requests
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 
 # ============================================================
@@ -24,153 +25,74 @@ WIDTH = LEFT + MAX_WEEKS * (CELL + GAP) + 35
 HEIGHT = 245
 
 FPS = 30
+FRAMES = 240
+
+OUTPUT = "assets/lava-flow.gif"
+
+BACKGROUND = (5, 5, 8)
+
 
 # ============================================================
-# ANIMATION
+# LAVA PALETTE
 # ============================================================
 
-# How many frames between each falling block
-SPAWN_INTERVAL = 3
+# Dark -> hot
+LAVA_STOPS = [
+    (18, 5, 5),
+    (55, 8, 4),
+    (105, 15, 3),
+    (170, 30, 2),
+    (225, 65, 3),
+    (255, 120, 5),
+    (255, 185, 25),
+    (255, 235, 120),
+]
 
-# How long the complete fall takes
-FALL_FRAMES = 45
-
-SETTLE_FRAMES = 10
-
-HOLD_FRAMES = 30
-
-# ============================================================
-# PHYSICS
-# ============================================================
-
-GRAVITY = 0.75
 
 # ============================================================
-# COLORS
+# GITHUB GRAPHQL
 # ============================================================
 
-BACKGROUND = (9, 13, 18)
-
-GRID_EMPTY = (18, 25, 32)
-
-TEXT = (190, 205, 220)
-
-MUTED = (100, 115, 130)
-
-LEVEL_COLORS = {
-    1: (59, 20, 90),
-    2: (91, 33, 182),
-    3: (139, 92, 246),
-    4: (192, 132, 252),
+QUERY = """
+query($login: String!) {
+  user(login: $login) {
+    contributionsCollection {
+      contributionCalendar {
+        weeks {
+          contributionDays {
+            contributionCount
+            date
+          }
+        }
+      }
+    }
+  }
 }
+"""
 
 
-# ============================================================
-# FONTS
-# ============================================================
+def fetch_contributions():
 
-def get_font(size):
-
-    fonts = [
-
-        "C:/Windows/Fonts/consola.ttf",
-
-        "C:/Windows/Fonts/consolab.ttf",
-
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-
-    ]
-
-    for path in fonts:
-
-        if os.path.exists(path):
-
-            return ImageFont.truetype(
-                path,
-                size
-            )
-
-    return ImageFont.load_default()
-
-
-FONT_TITLE = get_font(20)
-FONT_SMALL = get_font(10)
-FONT_TINY = get_font(8)
-
-
-# ============================================================
-# GITHUB DATA
-# ============================================================
-
-def get_contributions():
-
-    token = os.getenv("GITHUB_TOKEN")
+    token = os.environ.get("GITHUB_TOKEN")
 
     if not token:
-
         raise RuntimeError(
             "GITHUB_TOKEN environment variable is missing."
         )
 
-    query = """
-    query($login: String!) {
-
-        user(login: $login) {
-
-            contributionsCollection {
-
-                contributionCalendar {
-
-                    totalContributions
-
-                    weeks {
-
-                        contributionDays {
-
-                            contributionCount
-                            date
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    }
-    """
-
     response = requests.post(
-
         "https://api.github.com/graphql",
-
         json={
-
-            "query": query,
-
+            "query": QUERY,
             "variables": {
-
                 "login": USERNAME
-
             }
-
         },
-
         headers={
-
-            "Authorization":
-                f"Bearer {token}",
-
-            "Content-Type":
-                "application/json"
-
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
         },
-
         timeout=30
-
     )
 
     response.raise_for_status()
@@ -178,26 +100,13 @@ def get_contributions():
     data = response.json()
 
     if "errors" in data:
-
-        raise RuntimeError(
-            str(data["errors"])
-        )
-
-    calendar = (
-
-        data["data"]
-        ["user"]
-        ["contributionsCollection"]
-        ["contributionCalendar"]
-
-    )
+        raise RuntimeError(data["errors"])
 
     return (
-
-        calendar["weeks"],
-
-        calendar["totalContributions"]
-
+        data["data"]["user"]
+        ["contributionsCollection"]
+        ["contributionCalendar"]
+        ["weeks"]
     )
 
 
@@ -207,7 +116,7 @@ def get_contributions():
 
 def contribution_level(count):
 
-    if count <= 0:
+    if count == 0:
         return 0
 
     if count <= 2:
@@ -216,958 +125,550 @@ def contribution_level(count):
     if count <= 5:
         return 2
 
-    if count <= 10:
+    if count <= 9:
         return 3
 
     return 4
 
 
 # ============================================================
-# BLOCK
+# COLOR INTERPOLATION
 # ============================================================
 
-class Block:
+def lava_color(value):
 
-    def __init__(
-        self,
-        column,
-        target_row,
-        count,
-        index
-    ):
+    value = max(
+        0.0,
+        min(7.0, value)
+    )
 
-        self.column = column
+    index = int(value)
 
-        self.count = count
+    if index >= len(LAVA_STOPS) - 1:
+        return LAVA_STOPS[-1]
 
-        self.level = contribution_level(
-            count
+    fraction = value - index
+
+    a = LAVA_STOPS[index]
+    b = LAVA_STOPS[index + 1]
+
+    return tuple(
+        int(
+            a[i] +
+            (b[i] - a[i]) * fraction
         )
-
-        # ----------------------------------------------------
-        # Horizontal position
-        # ----------------------------------------------------
-
-        self.x = (
-
-            LEFT
-            + column * (CELL + GAP)
-
-        )
-
-        # ----------------------------------------------------
-        # Start above the grid
-        # ----------------------------------------------------
-
-        self.start_y = (
-
-            TOP
-            - 50
-            - (column % 5) * 10
-
-        )
-
-        self.y = self.start_y
-
-        # ----------------------------------------------------
-        # Landing position
-        # ----------------------------------------------------
-
-        self.target_y = (
-
-            TOP
-            + target_row * (CELL + GAP)
-
-        )
-
-        # ----------------------------------------------------
-        # Sequential delay
-        # ----------------------------------------------------
-
-        self.delay = (
-            index * SPAWN_INTERVAL
-        )
-
-        self.active = False
-
-        self.finished = False
+        for i in range(3)
+    )
 
 
 # ============================================================
-# CREATE BLOCKS
+# SMOOTH WAVE
 # ============================================================
 
-def create_blocks(weeks):
+def wave(x):
 
-    blocks = []
+    return (
+        math.sin(x) +
+        math.sin(x * 0.47) * 0.5 +
+        math.sin(x * 0.19) * 0.25
+    )
 
-    global_index = 0
 
-    for column, week in enumerate(weeks):
+# ============================================================
+# BUILD CONTRIBUTION GRID
+# ============================================================
 
-        contributions = []
+def build_grid(weeks):
 
-        for day in week[
-            "contributionDays"
-        ]:
+    grid = [
+        [0 for _ in range(MAX_WEEKS)]
+        for _ in range(ROWS)
+    ]
 
-            count = day[
-                "contributionCount"
-            ]
+    recent = weeks[-MAX_WEEKS:]
 
-            if count > 0:
+    for x, week in enumerate(recent):
 
-                contributions.append(
-                    count
-                )
-
-        # ----------------------------------------------------
-        # Stack from bottom
-        # ----------------------------------------------------
-
-        for stack_index, count in enumerate(
-            contributions
+        for y, day in enumerate(
+            week["contributionDays"]
         ):
 
-            target_row = (
-                ROWS
-                - 1
-                - stack_index
+            if y >= ROWS:
+                continue
+
+            grid[y][x] = contribution_level(
+                day["contributionCount"]
             )
 
-            block = Block(
-
-                column,
-
-                target_row,
-
-                count,
-
-                global_index
-
-            )
-
-            blocks.append(
-                block
-            )
-
-            global_index += 1
-
-    return blocks
+    return grid
 
 
 # ============================================================
-# EASING
+# LAVA SIMULATION
 # ============================================================
 
-def ease_out_cubic(t):
-
-    t = max(
-        0.0,
-        min(
-            1.0,
-            t
-        )
-    )
-
-    return 1 - (
-        1 - t
-    ) ** 3
-
-
-# ============================================================
-# BOUNCE
-# ============================================================
-
-def calculate_position(
-    start,
-    target,
-    progress
-):
-
-    progress = max(
-        0.0,
-        min(
-            1.0,
-            progress
-        )
-    )
-
-    # --------------------------------------------------------
-    # Main fall
-    # --------------------------------------------------------
-
-    eased = ease_out_cubic(
-        progress
-    )
-
-    position = (
-
-        start
-        + (
-            target
-            - start
-        ) * eased
-
-    )
-
-    # --------------------------------------------------------
-    # Small landing bounce
-    # --------------------------------------------------------
-
-    if progress > 0.82:
-
-        bounce_progress = (
-
-            progress
-            - 0.82
-
-        ) / 0.18
-
-        bounce = (
-
-            math.sin(
-                bounce_progress
-                * math.pi
-                * 2
-            )
-
-            * (
-
-                1
-                - bounce_progress
-
-            )
-
-            * 5
-
-        )
-
-        position -= bounce
-
-    return position
-
-
-# ============================================================
-# UPDATE BLOCKS
-# ============================================================
-
-def update_blocks(
-    blocks,
-    frame
-):
-
-    for block in blocks:
-
-        # ----------------------------------------------------
-        # Has this block started?
-        # ----------------------------------------------------
-
-        if frame < block.delay:
-
-            continue
-
-        block.active = True
-
-        local_frame = (
-            frame
-            - block.delay
-        )
-
-        # ----------------------------------------------------
-        # Has it finished?
-        # ----------------------------------------------------
-
-        if local_frame >= FALL_FRAMES:
-
-            block.y = block.target_y
-
-            block.finished = True
-
-            continue
-
-        # ----------------------------------------------------
-        # Calculate movement
-        # ----------------------------------------------------
-
-        progress = (
-
-            local_frame
-            / FALL_FRAMES
-
-        )
-
-        block.y = calculate_position(
-
-            block.start_y,
-
-            block.target_y,
-
-            progress
-
-        )
-
-
-# ============================================================
-# DRAW GRID
-# ============================================================
-
-def draw_grid(
-    draw,
-    weeks_count
-):
-
-    for column in range(
-        weeks_count
-    ):
-
-        for row in range(ROWS):
-
-            x = (
-
-                LEFT
-                + column * (CELL + GAP)
-
-            )
-
-            y = (
-
-                TOP
-                + row * (CELL + GAP)
-
-            )
-
-            draw.rounded_rectangle(
-
-                (
-                    x,
-                    y,
-                    x + CELL,
-                    y + CELL
-                ),
-
-                radius=3,
-
-                fill=GRID_EMPTY
-
-            )
-
-
-# ============================================================
-# DRAW MONTHS
-# ============================================================
-
-def draw_months(
-    draw,
-    weeks
-):
-
-    months = {
-
-        "01": "Jan",
-        "02": "Feb",
-        "03": "Mar",
-        "04": "Apr",
-        "05": "May",
-        "06": "Jun",
-        "07": "Jul",
-        "08": "Aug",
-        "09": "Sep",
-        "10": "Oct",
-        "11": "Nov",
-        "12": "Dec"
-
-    }
-
-    previous = None
-
-    for column, week in enumerate(
-        weeks
-    ):
-
-        days = week[
-            "contributionDays"
+def simulate_lava(base_grid, frame):
+
+    heat = [
+        [
+            base_grid[y][x] * 1.15
+            for x in range(MAX_WEEKS)
         ]
-
-        if not days:
-            continue
-
-        month = days[0][
-            "date"
-        ][5:7]
-
-        if month == previous:
-            continue
-
-        previous = month
-
-        x = (
-
-            LEFT
-            + column * (CELL + GAP)
-
-        )
-
-        draw.text(
-
-            (
-                x,
-                TOP - 22
-            ),
-
-            months.get(
-                month,
-                ""
-            ),
-
-            font=FONT_SMALL,
-
-            fill=MUTED
-
-        )
-
-
-# ============================================================
-# DRAW WEEKDAYS
-# ============================================================
-
-def draw_weekdays(draw):
-
-    labels = [
-
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-
+        for y in range(ROWS)
     ]
 
-    for row, label in enumerate(
-        labels
-    ):
+    # --------------------------------------------------------
+    # MOVING HEAT FIELD
+    # --------------------------------------------------------
 
-        y = (
+    for y in range(ROWS):
 
-            TOP
-            + row * (CELL + GAP)
+        for x in range(MAX_WEEKS):
 
+            # Flow direction changes over time
+            flow_x = (
+                math.sin(
+                    frame * 0.035 +
+                    y * 0.9
+                ) * 0.55
+            )
+
+            flow_y = (
+                math.cos(
+                    frame * 0.028 +
+                    x * 0.25
+                ) * 0.35
+            )
+
+            sx = int(
+                max(
+                    0,
+                    min(
+                        MAX_WEEKS - 1,
+                        x + flow_x
+                    )
+                )
+            )
+
+            sy = int(
+                max(
+                    0,
+                    min(
+                        ROWS - 1,
+                        y + flow_y
+                    )
+                )
+            )
+
+            heat[y][x] += (
+                base_grid[sy][sx] * 0.8
+            )
+
+    # --------------------------------------------------------
+    # DIFFUSION
+    # --------------------------------------------------------
+
+    result = [
+        row[:]
+        for row in heat
+    ]
+
+    for y in range(ROWS):
+
+        for x in range(MAX_WEEKS):
+
+            neighbors = []
+
+            for dy, dx in [
+                (-1, 0),
+                (1, 0),
+                (0, -1),
+                (0, 1),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1)
+            ]:
+
+                ny = y + dy
+                nx = x + dx
+
+                if (
+                    0 <= ny < ROWS and
+                    0 <= nx < MAX_WEEKS
+                ):
+                    neighbors.append(
+                        heat[ny][nx]
+                    )
+
+            if neighbors:
+
+                average = (
+                    sum(neighbors) /
+                    len(neighbors)
+                )
+
+                result[y][x] = (
+                    heat[y][x] * 0.72 +
+                    average * 0.28
+                )
+
+    # --------------------------------------------------------
+    # MOVING HOTSPOTS
+    # --------------------------------------------------------
+
+    for hotspot in range(9):
+
+        hx = (
+            (frame * (0.035 + hotspot * 0.004))
+            +
+            hotspot * 6.7
+        ) % MAX_WEEKS
+
+        hy = (
+            ROWS / 2
+            +
+            math.sin(
+                frame * 0.035 +
+                hotspot
+            ) * 2.2
         )
 
-        draw.text(
-
-            (
-                4,
-                y + 1
-            ),
-
-            label,
-
-            font=FONT_TINY,
-
-            fill=MUTED
-
+        strength = (
+            1.5 +
+            math.sin(
+                frame * 0.06 +
+                hotspot
+            ) * 0.6
         )
 
+        for y in range(ROWS):
 
-# ============================================================
-# DRAW HEADER
-# ============================================================
+            for x in range(MAX_WEEKS):
 
-def draw_header(
-    draw,
-    total_contributions
-):
+                distance = math.sqrt(
+                    (x - hx) ** 2 +
+                    (y - hy) ** 2
+                )
 
-    draw.text(
+                influence = math.exp(
+                    -(distance ** 2) / 5.0
+                )
 
-        (
-            LEFT,
-            14
-        ),
+                result[y][x] += (
+                    influence *
+                    strength
+                )
 
-        "Contribution Gravity Drop",
+    # --------------------------------------------------------
+    # EDGE COOLING
+    # --------------------------------------------------------
 
-        font=FONT_TITLE,
+    for y in range(ROWS):
 
-        fill=TEXT
+        for x in range(MAX_WEEKS):
 
-    )
+            result[y][x] *= 0.92
 
-    draw.text(
+            # Keep contribution cells alive
+            result[y][x] += (
+                base_grid[y][x] * 0.35
+            )
 
-        (
-            LEFT,
-            40
-        ),
-
-        "commits fall  •  one by one  •  stack",
-
-        font=FONT_SMALL,
-
-        fill=MUTED
-
-    )
-
-    counter = (
-
-        f"{total_contributions:,}"
-        " contributions"
-
-    )
-
-    bbox = draw.textbbox(
-
-        (0, 0),
-
-        counter,
-
-        font=FONT_SMALL
-
-    )
-
-    width = (
-        bbox[2]
-        - bbox[0]
-    )
-
-    draw.text(
-
-        (
-            WIDTH
-            - width
-            - 10,
-
-            20
-        ),
-
-        counter,
-
-        font=FONT_SMALL,
-
-        fill=TEXT
-
-    )
+    return result
 
 
 # ============================================================
-# DRAW STATUS
+# DRAW GLOW
 # ============================================================
 
-def draw_status(
-    draw,
-    text
-):
+def draw_glow(img, x, y, intensity):
 
-    draw.text(
-
-        (
-            LEFT,
-            HEIGHT - 22
-        ),
-
-        text,
-
-        font=FONT_SMALL,
-
-        fill=MUTED
-
-    )
-
-
-# ============================================================
-# DRAW BLOCK
-# ============================================================
-
-def draw_block(
-    draw,
-    glow_draw,
-    block
-):
-
-    if not block.active:
-
+    if intensity < 3.0:
         return
 
-    x = int(
-        block.x
+    glow = Image.new(
+        "RGBA",
+        img.size,
+        (0, 0, 0, 0)
     )
 
-    y = int(
-        block.y
+    gd = ImageDraw.Draw(glow)
+
+    radius = int(
+        4 + intensity * 1.2
     )
 
-    color = LEVEL_COLORS[
-        block.level
-    ]
+    alpha = int(
+        min(
+            120,
+            25 + intensity * 10
+        )
+    )
+
+    gd.rounded_rectangle(
+        [
+            x - radius,
+            y - radius,
+            x + CELL + radius,
+            y + CELL + radius
+        ],
+        radius=radius,
+        fill=(
+            255,
+            70,
+            5,
+            alpha
+        )
+    )
+
+    glow = glow.filter(
+        ImageFilter.GaussianBlur(
+            radius=5
+        )
+    )
+
+    img.alpha_composite(glow)
+
+
+# ============================================================
+# DRAW LAVA CELL
+# ============================================================
+
+def draw_lava_cell(
+    draw,
+    x,
+    y,
+    intensity,
+    frame,
+    cell_x,
+    cell_y
+):
+
+    color = lava_color(intensity)
 
     # --------------------------------------------------------
-    # Glow
+    # Organic edge distortion
     # --------------------------------------------------------
 
-    glow_draw.rounded_rectangle(
+    distortion = (
+        math.sin(
+            frame * 0.08 +
+            cell_x * 1.7 +
+            cell_y * 2.1
+        ) * 1.1
+    )
 
-        (
-            x - 5,
-            y - 5,
-            x + CELL + 5,
-            y + CELL + 5
-        ),
-
-        radius=4,
-
-        fill=color + (130,)
-
+    radius = int(
+        max(
+            2,
+            3 + distortion
+        )
     )
 
     # --------------------------------------------------------
-    # Block
+    # Outer dark molten edge
     # --------------------------------------------------------
 
     draw.rounded_rectangle(
+        [
+            x - 1,
+            y - 1,
+            x + CELL + 1,
+            y + CELL + 1
+        ],
+        radius=radius + 1,
+        fill=(12, 5, 5)
+    )
 
-        (
+    # --------------------------------------------------------
+    # Main lava
+    # --------------------------------------------------------
+
+    draw.rounded_rectangle(
+        [
             x,
             y,
             x + CELL,
             y + CELL
-        ),
-
-        radius=3,
-
+        ],
+        radius=radius,
         fill=color
-
-    )
-
-
-# ============================================================
-# RENDER
-# ============================================================
-
-def render_frame(
-    weeks,
-    blocks,
-    total_contributions,
-    status
-):
-
-    image = Image.new(
-
-        "RGBA",
-
-        (
-            WIDTH,
-            HEIGHT
-        ),
-
-        BACKGROUND + (255,)
-
-    )
-
-    draw = ImageDraw.Draw(
-        image
     )
 
     # --------------------------------------------------------
-    # Header
+    # Moving hot core
     # --------------------------------------------------------
 
-    draw_header(
+    if intensity > 4.5:
 
-        draw,
+        pulse = (
+            math.sin(
+                frame * 0.15 +
+                cell_x +
+                cell_y
+            ) + 1
+        ) / 2
 
-        total_contributions
-
-    )
-
-    # --------------------------------------------------------
-    # Grid
-    # --------------------------------------------------------
-
-    draw_grid(
-
-        draw,
-
-        len(weeks)
-
-    )
-
-    # --------------------------------------------------------
-    # Labels
-    # --------------------------------------------------------
-
-    draw_months(
-
-        draw,
-
-        weeks
-
-    )
-
-    draw_weekdays(
-        draw
-    )
-
-    # --------------------------------------------------------
-    # Glow
-    # --------------------------------------------------------
-
-    glow = Image.new(
-
-        "RGBA",
-
-        (
-            WIDTH,
-            HEIGHT
-        ),
-
-        (
-            0,
-            0,
-            0,
-            0
+        core = int(
+            2 + pulse * 3
         )
 
-    )
-
-    glow_draw = ImageDraw.Draw(
-        glow
-    )
-
-    # --------------------------------------------------------
-    # Blocks
-    # --------------------------------------------------------
-
-    for block in blocks:
-
-        draw_block(
-
-            draw,
-
-            glow_draw,
-
-            block
-
+        core_color = (
+            255,
+            225,
+            100
         )
-
-    # --------------------------------------------------------
-    # Apply glow
-    # --------------------------------------------------------
-
-    glow = glow.filter(
-
-        ImageFilter.GaussianBlur(
-            6
-        )
-
-    )
-
-    image.alpha_composite(
-        glow
-    )
-
-    # --------------------------------------------------------
-    # Redraw blocks
-    # --------------------------------------------------------
-
-    draw = ImageDraw.Draw(
-        image
-    )
-
-    for block in blocks:
-
-        if not block.active:
-            continue
-
-        x = int(
-            block.x
-        )
-
-        y = int(
-            block.y
-        )
-
-        color = LEVEL_COLORS[
-            block.level
-        ]
 
         draw.rounded_rectangle(
-
-            (
-                x,
-                y,
-                x + CELL,
-                y + CELL
-            ),
-
-            radius=3,
-
-            fill=color
-
+            [
+                x + core,
+                y + core,
+                x + CELL - core,
+                y + CELL - core
+            ],
+            radius=2,
+            fill=core_color
         )
 
-    # --------------------------------------------------------
-    # Status
-    # --------------------------------------------------------
-
-    draw_status(
-
-        draw,
-
-        status
-
-    )
-
-    return image.convert(
-        "RGB"
-    )
-
 
 # ============================================================
-# GENERATE ANIMATION
+# FRAME GENERATION
 # ============================================================
 
-def generate_animation(
-    weeks,
-    blocks,
-    total_contributions
+def generate_frame(
+    base_grid,
+    frame
 ):
+
+    heat = simulate_lava(
+        base_grid,
+        frame
+    )
+
+    img = Image.new(
+        "RGBA",
+        (WIDTH, HEIGHT),
+        BACKGROUND + (255,)
+    )
+
+    # ========================================================
+    # HEADER
+    # ========================================================
+
+    draw = ImageDraw.Draw(img)
+
+    draw.text(
+        (LEFT, 18),
+        "CONTRIBUTION HEAT",
+        fill=(235, 225, 225)
+    )
+
+    draw.text(
+        (LEFT, 39),
+        "activity is molten",
+        fill=(120, 100, 100)
+    )
+
+    # ========================================================
+    # GLOW PASS
+    # ========================================================
+
+    for y in range(ROWS):
+
+        for x in range(MAX_WEEKS):
+
+            intensity = heat[y][x]
+
+            px = (
+                LEFT +
+                x * (CELL + GAP)
+            )
+
+            py = (
+                TOP +
+                y * (CELL + GAP)
+            )
+
+            draw_glow(
+                img,
+                px,
+                py,
+                intensity
+            )
+
+    # ========================================================
+    # LAVA PASS
+    # ========================================================
+
+    draw = ImageDraw.Draw(img)
+
+    for y in range(ROWS):
+
+        for x in range(MAX_WEEKS):
+
+            intensity = heat[y][x]
+
+            # Don't completely erase empty GitHub cells
+            if intensity < 0.15:
+
+                intensity = 0
+
+            px = (
+                LEFT +
+                x * (CELL + GAP)
+            )
+
+            py = (
+                TOP +
+                y * (CELL + GAP)
+            )
+
+            draw_lava_cell(
+                draw,
+                px,
+                py,
+                intensity,
+                frame,
+                x,
+                y
+            )
+
+    return img.convert("RGB")
+
+
+# ============================================================
+# GENERATE GIF
+# ============================================================
+
+def generate_animation(weeks):
+
+    base_grid = build_grid(
+        weeks
+    )
 
     frames = []
 
-    # --------------------------------------------------------
-    # Calculate total duration
-    # --------------------------------------------------------
-
-    last_delay = 0
-
-    if blocks:
-
-        last_delay = max(
-            block.delay
-            for block in blocks
-        )
-
-    total_frames = (
-
-        last_delay
-        + FALL_FRAMES
-        + SETTLE_FRAMES
-
+    print(
+        f"Generating {FRAMES} lava frames..."
     )
 
-    # --------------------------------------------------------
-    # Animation
-    # --------------------------------------------------------
+    for frame in range(FRAMES):
 
-    for frame in range(
-        total_frames
-    ):
+        if frame % 20 == 0:
 
-        update_blocks(
-
-            blocks,
-
-            frame
-
-        )
-
-        active_count = sum(
-
-            1
-            for block in blocks
-            if block.active
-
-        )
-
-        status = (
-
-            f"{active_count} blocks falling"
-
-        )
-
-        frames.append(
-
-            render_frame(
-
-                weeks,
-
-                blocks,
-
-                total_contributions,
-
-                status
-
+            print(
+                f"Frame {frame}/{FRAMES}"
             )
 
-        )
-
-    # --------------------------------------------------------
-    # Final hold
-    # --------------------------------------------------------
-
-    final = render_frame(
-
-        weeks,
-
-        blocks,
-
-        total_contributions,
-
-        "contribution history settled"
-
-    )
-
-    for _ in range(
-        HOLD_FRAMES
-    ):
-
         frames.append(
-            final.copy()
+            generate_frame(
+                base_grid,
+                frame
+            )
         )
 
     return frames
-
-
-# ============================================================
-# SAVE GIF
-# ============================================================
-
-def save_gif(frames):
-
-    os.makedirs(
-
-        "assets",
-
-        exist_ok=True
-
-    )
-
-    output = (
-        "assets/gravity-drop.gif"
-    )
-
-    frames[0].save(
-
-        output,
-
-        save_all=True,
-
-        append_images=frames[1:],
-
-        duration=int(
-            1000 / FPS
-        ),
-
-        loop=0,
-
-        optimize=True
-
-    )
-
-    return output
 
 
 # ============================================================
@@ -1176,113 +677,63 @@ def save_gif(frames):
 
 def main():
 
-    print()
-
     print(
         "Fetching GitHub contribution data..."
     )
 
-    weeks, total_contributions = (
-        get_contributions()
-    )
-
-    weeks = weeks[
-        :MAX_WEEKS
-    ]
+    weeks = fetch_contributions()
 
     print(
-        f"Received {len(weeks)} weeks."
+        "GitHub contribution data loaded."
     )
 
-    print(
-        f"Total contributions: "
-        f"{total_contributions:,}"
-    )
-
-    print()
-
-    # --------------------------------------------------------
-    # Create ALL blocks
-    # --------------------------------------------------------
-
-    blocks = create_blocks(
+    frames = generate_animation(
         weeks
     )
 
+    os.makedirs(
+        os.path.dirname(OUTPUT),
+        exist_ok=True
+    )
+
     print(
-        f"Created {len(blocks)} "
-        "contribution blocks."
+        "Saving GIF..."
+    )
+
+    frames[0].save(
+        OUTPUT,
+        save_all=True,
+        append_images=frames[1:],
+        duration=int(
+            1000 / FPS
+        ),
+        loop=0,
+        optimize=False
     )
 
     print()
-
     print(
-        "Starting sequential gravity..."
+        "================================"
     )
-
-    # --------------------------------------------------------
-    # Generate
-    # --------------------------------------------------------
-
-    frames = generate_animation(
-
-        weeks,
-
-        blocks,
-
-        total_contributions
-
-    )
-
-    print()
-
     print(
-        f"Generated {len(frames)} frames."
+        "LAVA FLOW GENERATED"
     )
-
     print(
-        "Creating GIF..."
+        "================================"
     )
-
-    output = save_gif(
-        frames
-    )
-
-    print()
-
     print(
-        "======================================"
+        f"Output : {OUTPUT}"
     )
-
     print(
-        " Gravity Drop generated successfully"
+        f"Frames : {len(frames)}"
     )
-
     print(
-        "======================================"
+        f"Size   : {WIDTH} × {HEIGHT}"
     )
-
-    print()
-
     print(
-        f"Output: {output}"
+        f"FPS    : {FPS}"
     )
 
-    print(
-        f"Frames: {len(frames)}"
-    )
-
-    print(
-        f"Size: {WIDTH} × {HEIGHT}"
-    )
-
-    print()
-
-
-# ============================================================
-# RUN
-# ============================================================
 
 if __name__ == "__main__":
-
     main()
