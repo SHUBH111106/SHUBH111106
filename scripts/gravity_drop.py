@@ -1,11 +1,12 @@
 import os
 import requests
 import math
+
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 
 # ============================================================
-# CONFIGURATION
+# CONFIG
 # ============================================================
 
 USERNAME = "SHUBH111106"
@@ -19,26 +20,53 @@ GAP = 5
 LEFT = 48
 TOP = 82
 
-GRID_WIDTH = MAX_WEEKS * (CELL + GAP)
-GRID_HEIGHT = ROWS * (CELL + GAP)
-
-WIDTH = LEFT + GRID_WIDTH + 35
+WIDTH = LEFT + MAX_WEEKS * (CELL + GAP) + 35
 HEIGHT = 245
 
 FPS = 30
 
+# ============================================================
+# ANIMATION
+# ============================================================
+
+# How many frames between each falling block
+SPAWN_INTERVAL = 3
+
+# How long the complete fall takes
+FALL_FRAMES = 45
+
+SETTLE_FRAMES = 10
+
+HOLD_FRAMES = 30
+
+# ============================================================
+# PHYSICS
+# ============================================================
+
+GRAVITY = 0.75
+
+# ============================================================
+# COLORS
+# ============================================================
+
 BACKGROUND = (9, 13, 18)
+
 GRID_EMPTY = (18, 25, 32)
 
 TEXT = (190, 205, 220)
+
 MUTED = (100, 115, 130)
 
-# GitHub-style intensity colors
 LEVEL_COLORS = {
+
     1: (14, 68, 41),
+
     2: (0, 109, 50),
+
     3: (38, 166, 65),
+
     4: (57, 211, 83),
+
 }
 
 
@@ -48,16 +76,24 @@ LEVEL_COLORS = {
 
 def get_font(size):
 
-    possible_fonts = [
+    fonts = [
+
         "C:/Windows/Fonts/consola.ttf",
+
         "C:/Windows/Fonts/consolab.ttf",
+
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+
     ]
 
-    for path in possible_fonts:
+    for path in fonts:
 
         if os.path.exists(path):
-            return ImageFont.truetype(path, size)
+
+            return ImageFont.truetype(
+                path,
+                size
+            )
 
     return ImageFont.load_default()
 
@@ -68,7 +104,7 @@ FONT_TINY = get_font(8)
 
 
 # ============================================================
-# GITHUB CONTRIBUTIONS
+# GITHUB DATA
 # ============================================================
 
 def get_contributions():
@@ -113,21 +149,33 @@ def get_contributions():
     """
 
     response = requests.post(
+
         "https://api.github.com/graphql",
 
         json={
+
             "query": query,
+
             "variables": {
+
                 "login": USERNAME
+
             }
+
         },
 
         headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+
+            "Authorization":
+                f"Bearer {token}",
+
+            "Content-Type":
+                "application/json"
+
         },
 
         timeout=30
+
     )
 
     response.raise_for_status()
@@ -141,15 +189,20 @@ def get_contributions():
         )
 
     calendar = (
+
         data["data"]
         ["user"]
         ["contributionsCollection"]
         ["contributionCalendar"]
+
     )
 
     return (
+
         calendar["weeks"],
+
         calendar["totalContributions"]
+
     )
 
 
@@ -182,108 +235,226 @@ class Block:
 
     def __init__(
         self,
-        week,
-        original_row,
+        column,
+        target_row,
         count,
-        stack_row
+        index
     ):
 
-        self.week = week
-
-        self.original_row = original_row
+        self.column = column
 
         self.count = count
 
-        self.level = contribution_level(count)
-
-        # Horizontal position
-        self.x = (
-            LEFT +
-            week * (CELL + GAP)
+        self.level = contribution_level(
+            count
         )
 
-        # Start above the grid
-        self.y = -CELL * 2.5
+        # ----------------------------------------------------
+        # Horizontal position
+        # ----------------------------------------------------
 
-        # Final stacking position
-        self.target_row = stack_row
+        self.x = (
+
+            LEFT
+            + column * (CELL + GAP)
+
+        )
+
+        # ----------------------------------------------------
+        # Start above the grid
+        # ----------------------------------------------------
+
+        self.start_y = (
+
+            TOP
+            - 50
+            - (column % 5) * 10
+
+        )
+
+        self.y = self.start_y
+
+        # ----------------------------------------------------
+        # Landing position
+        # ----------------------------------------------------
 
         self.target_y = (
-            TOP +
-            stack_row * (CELL + GAP)
+
+            TOP
+            + target_row * (CELL + GAP)
+
         )
 
-        # Physics
-        self.velocity = 0.0
+        # ----------------------------------------------------
+        # Sequential delay
+        # ----------------------------------------------------
 
-        self.locked = False
+        self.delay = (
+            index * SPAWN_INTERVAL
+        )
 
-        self.delay = 0
+        self.active = False
 
-        self.bounces = 0
+        self.finished = False
 
 
 # ============================================================
-# CREATE WEEK BLOCKS
+# CREATE BLOCKS
 # ============================================================
 
-def create_week_blocks(
-    week_index,
-    week
-):
+def create_blocks(weeks):
 
     blocks = []
 
-    contributions = []
+    global_index = 0
 
-    for row, day in enumerate(
-        week["contributionDays"]
-    ):
+    for column, week in enumerate(weeks):
 
-        count = day["contributionCount"]
+        contributions = []
 
-        if count > 0:
+        for day in week[
+            "contributionDays"
+        ]:
 
-            contributions.append(
-                (
-                    row,
+            count = day[
+                "contributionCount"
+            ]
+
+            if count > 0:
+
+                contributions.append(
                     count
                 )
+
+        # ----------------------------------------------------
+        # Stack from bottom
+        # ----------------------------------------------------
+
+        for stack_index, count in enumerate(
+            contributions
+        ):
+
+            target_row = (
+                ROWS
+                - 1
+                - stack_index
             )
 
-    # --------------------------------------------------------
-    # Stack blocks from bottom upward
-    # --------------------------------------------------------
+            block = Block(
 
-    # Original weekday order is preserved.
-    #
-    # The first contribution lands at the bottom,
-    # the next one above it, etc.
+                column,
 
-    for stack_index, (
-        original_row,
-        count
-    ) in enumerate(contributions):
+                target_row,
 
-        target_row = ROWS - 1 - stack_index
+                count,
 
-        block = Block(
-            week_index,
-            original_row,
-            count,
-            target_row
-        )
+                global_index
 
-        # Small stagger makes the animation feel organic.
-        block.delay = stack_index * 3
+            )
 
-        blocks.append(block)
+            blocks.append(
+                block
+            )
+
+            global_index += 1
 
     return blocks
 
 
 # ============================================================
-# UPDATE PHYSICS
+# EASING
+# ============================================================
+
+def ease_out_cubic(t):
+
+    t = max(
+        0.0,
+        min(
+            1.0,
+            t
+        )
+    )
+
+    return 1 - (
+        1 - t
+    ) ** 3
+
+
+# ============================================================
+# BOUNCE
+# ============================================================
+
+def calculate_position(
+    start,
+    target,
+    progress
+):
+
+    progress = max(
+        0.0,
+        min(
+            1.0,
+            progress
+        )
+    )
+
+    # --------------------------------------------------------
+    # Main fall
+    # --------------------------------------------------------
+
+    eased = ease_out_cubic(
+        progress
+    )
+
+    position = (
+
+        start
+        + (
+            target
+            - start
+        ) * eased
+
+    )
+
+    # --------------------------------------------------------
+    # Small landing bounce
+    # --------------------------------------------------------
+
+    if progress > 0.82:
+
+        bounce_progress = (
+
+            progress
+            - 0.82
+
+        ) / 0.18
+
+        bounce = (
+
+            math.sin(
+                bounce_progress
+                * math.pi
+                * 2
+            )
+
+            * (
+
+                1
+                - bounce_progress
+
+            )
+
+            * 5
+
+        )
+
+        position -= bounce
+
+    return position
+
+
+# ============================================================
+# UPDATE BLOCKS
 # ============================================================
 
 def update_blocks(
@@ -294,50 +465,52 @@ def update_blocks(
     for block in blocks:
 
         # ----------------------------------------------------
-        # Spawn delay
+        # Has this block started?
         # ----------------------------------------------------
 
         if frame < block.delay:
+
             continue
 
-        # ----------------------------------------------------
-        # Already settled
-        # ----------------------------------------------------
+        block.active = True
 
-        if block.locked:
-            continue
-
-        # ----------------------------------------------------
-        # Gravity
-        # ----------------------------------------------------
-
-        block.velocity += 0.42
-
-        block.y += block.velocity
+        local_frame = (
+            frame
+            - block.delay
+        )
 
         # ----------------------------------------------------
-        # Target collision
+        # Has it finished?
         # ----------------------------------------------------
 
-        if block.y >= block.target_y:
+        if local_frame >= FALL_FRAMES:
 
             block.y = block.target_y
 
-            # Small bounce
-            if (
-                block.bounces < 2
-                and block.velocity > 2.0
-            ):
+            block.finished = True
 
-                block.velocity *= -0.22
+            continue
 
-                block.bounces += 1
+        # ----------------------------------------------------
+        # Calculate movement
+        # ----------------------------------------------------
 
-            else:
+        progress = (
 
-                block.velocity = 0
+            local_frame
+            / FALL_FRAMES
 
-                block.locked = True
+        )
+
+        block.y = calculate_position(
+
+            block.start_y,
+
+            block.target_y,
+
+            progress
+
+        )
 
 
 # ============================================================
@@ -349,21 +522,28 @@ def draw_grid(
     weeks_count
 ):
 
-    for week in range(MAX_WEEKS):
+    for column in range(
+        weeks_count
+    ):
 
         for row in range(ROWS):
 
             x = (
-                LEFT +
-                week * (CELL + GAP)
+
+                LEFT
+                + column * (CELL + GAP)
+
             )
 
             y = (
-                TOP +
-                row * (CELL + GAP)
+
+                TOP
+                + row * (CELL + GAP)
+
             )
 
             draw.rounded_rectangle(
+
                 (
                     x,
                     y,
@@ -374,7 +554,232 @@ def draw_grid(
                 radius=3,
 
                 fill=GRID_EMPTY
+
             )
+
+
+# ============================================================
+# DRAW MONTHS
+# ============================================================
+
+def draw_months(
+    draw,
+    weeks
+):
+
+    months = {
+
+        "01": "Jan",
+        "02": "Feb",
+        "03": "Mar",
+        "04": "Apr",
+        "05": "May",
+        "06": "Jun",
+        "07": "Jul",
+        "08": "Aug",
+        "09": "Sep",
+        "10": "Oct",
+        "11": "Nov",
+        "12": "Dec"
+
+    }
+
+    previous = None
+
+    for column, week in enumerate(
+        weeks
+    ):
+
+        days = week[
+            "contributionDays"
+        ]
+
+        if not days:
+            continue
+
+        month = days[0][
+            "date"
+        ][5:7]
+
+        if month == previous:
+            continue
+
+        previous = month
+
+        x = (
+
+            LEFT
+            + column * (CELL + GAP)
+
+        )
+
+        draw.text(
+
+            (
+                x,
+                TOP - 22
+            ),
+
+            months.get(
+                month,
+                ""
+            ),
+
+            font=FONT_SMALL,
+
+            fill=MUTED
+
+        )
+
+
+# ============================================================
+# DRAW WEEKDAYS
+# ============================================================
+
+def draw_weekdays(draw):
+
+    labels = [
+
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun"
+
+    ]
+
+    for row, label in enumerate(
+        labels
+    ):
+
+        y = (
+
+            TOP
+            + row * (CELL + GAP)
+
+        )
+
+        draw.text(
+
+            (
+                4,
+                y + 1
+            ),
+
+            label,
+
+            font=FONT_TINY,
+
+            fill=MUTED
+
+        )
+
+
+# ============================================================
+# DRAW HEADER
+# ============================================================
+
+def draw_header(
+    draw,
+    total_contributions
+):
+
+    draw.text(
+
+        (
+            LEFT,
+            14
+        ),
+
+        "Contribution Gravity Drop",
+
+        font=FONT_TITLE,
+
+        fill=TEXT
+
+    )
+
+    draw.text(
+
+        (
+            LEFT,
+            40
+        ),
+
+        "commits fall  •  one by one  •  stack",
+
+        font=FONT_SMALL,
+
+        fill=MUTED
+
+    )
+
+    counter = (
+
+        f"{total_contributions:,}"
+        " contributions"
+
+    )
+
+    bbox = draw.textbbox(
+
+        (0, 0),
+
+        counter,
+
+        font=FONT_SMALL
+
+    )
+
+    width = (
+        bbox[2]
+        - bbox[0]
+    )
+
+    draw.text(
+
+        (
+            WIDTH
+            - width
+            - 10,
+
+            20
+        ),
+
+        counter,
+
+        font=FONT_SMALL,
+
+        fill=TEXT
+
+    )
+
+
+# ============================================================
+# DRAW STATUS
+# ============================================================
+
+def draw_status(
+    draw,
+    text
+):
+
+    draw.text(
+
+        (
+            LEFT,
+            HEIGHT - 22
+        ),
+
+        text,
+
+        font=FONT_SMALL,
+
+        fill=MUTED
+
+    )
 
 
 # ============================================================
@@ -387,12 +792,17 @@ def draw_block(
     block
 ):
 
-    if block.y < TOP - CELL * 3:
+    if not block.active:
+
         return
 
-    x = int(block.x)
+    x = int(
+        block.x
+    )
 
-    y = int(block.y)
+    y = int(
+        block.y
+    )
 
     color = LEVEL_COLORS[
         block.level
@@ -403,6 +813,7 @@ def draw_block(
     # --------------------------------------------------------
 
     glow_draw.rounded_rectangle(
+
         (
             x - 5,
             y - 5,
@@ -413,13 +824,15 @@ def draw_block(
         radius=4,
 
         fill=color + (130,)
+
     )
 
     # --------------------------------------------------------
-    # Main block
+    # Block
     # --------------------------------------------------------
 
     draw.rounded_rectangle(
+
         (
             x,
             y,
@@ -430,218 +843,48 @@ def draw_block(
         radius=3,
 
         fill=color
+
     )
 
 
 # ============================================================
-# MONTH LABELS
-# ============================================================
-
-def draw_months(
-    draw,
-    weeks
-):
-
-    last_month = None
-
-    for week_index, week in enumerate(weeks):
-
-        if not week["contributionDays"]:
-            continue
-
-        date = week[
-            "contributionDays"
-        ][0]["date"]
-
-        month = date[5:7]
-
-        month_names = {
-            "01": "Jan",
-            "02": "Feb",
-            "03": "Mar",
-            "04": "Apr",
-            "05": "May",
-            "06": "Jun",
-            "07": "Jul",
-            "08": "Aug",
-            "09": "Sep",
-            "10": "Oct",
-            "11": "Nov",
-            "12": "Dec",
-        }
-
-        name = month_names.get(
-            month,
-            ""
-        )
-
-        if month != last_month:
-
-            x = (
-                LEFT +
-                week_index * (CELL + GAP)
-            )
-
-            draw.text(
-                (x, TOP - 22),
-                name,
-                font=FONT_SMALL,
-                fill=MUTED
-            )
-
-            last_month = month
-
-
-# ============================================================
-# WEEKDAY LABELS
-# ============================================================
-
-def draw_weekdays(draw):
-
-    labels = [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-    ]
-
-    for row, label in enumerate(labels):
-
-        y = (
-            TOP +
-            row * (CELL + GAP)
-        )
-
-        draw.text(
-            (
-                5,
-                y + 1
-            ),
-
-            label,
-
-            font=FONT_TINY,
-
-            fill=MUTED
-        )
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-def draw_header(
-    draw,
-    total_contributions
-):
-
-    draw.text(
-        (LEFT, 14),
-
-        "Contribution Gravity Drop",
-
-        font=FONT_TITLE,
-
-        fill=TEXT
-    )
-
-    draw.text(
-        (LEFT, 40),
-
-        "commits fall  •  collide  •  stack",
-
-        font=FONT_SMALL,
-
-        fill=MUTED
-    )
-
-    # Contribution counter
-    counter = (
-        f"{total_contributions:,} contributions"
-    )
-
-    bbox = draw.textbbox(
-        (0, 0),
-        counter,
-        font=FONT_SMALL
-    )
-
-    counter_width = (
-        bbox[2] - bbox[0]
-    )
-
-    draw.text(
-        (
-            WIDTH -
-            counter_width -
-            10,
-            20
-        ),
-
-        counter,
-
-        font=FONT_SMALL,
-
-        fill=TEXT
-    )
-
-
-# ============================================================
-# STATUS
-# ============================================================
-
-def draw_status(
-    draw,
-    text
-):
-
-    draw.text(
-        (
-            LEFT,
-            HEIGHT - 22
-        ),
-
-        text,
-
-        font=FONT_SMALL,
-
-        fill=MUTED
-    )
-
-
-# ============================================================
-# RENDER FRAME
+# RENDER
 # ============================================================
 
 def render_frame(
     weeks,
-    active_blocks,
+    blocks,
     total_contributions,
     status
 ):
 
     image = Image.new(
+
         "RGBA",
+
         (
             WIDTH,
             HEIGHT
         ),
 
         BACKGROUND + (255,)
+
     )
 
-    draw = ImageDraw.Draw(image)
+    draw = ImageDraw.Draw(
+        image
+    )
 
     # --------------------------------------------------------
     # Header
     # --------------------------------------------------------
 
     draw_header(
+
         draw,
+
         total_contributions
+
     )
 
     # --------------------------------------------------------
@@ -649,29 +892,49 @@ def render_frame(
     # --------------------------------------------------------
 
     draw_grid(
+
         draw,
+
         len(weeks)
-    )
 
-    draw_weekdays(draw)
-
-    draw_months(
-        draw,
-        weeks
     )
 
     # --------------------------------------------------------
-    # Glow layer
+    # Labels
+    # --------------------------------------------------------
+
+    draw_months(
+
+        draw,
+
+        weeks
+
+    )
+
+    draw_weekdays(
+        draw
+    )
+
+    # --------------------------------------------------------
+    # Glow
     # --------------------------------------------------------
 
     glow = Image.new(
+
         "RGBA",
+
         (
             WIDTH,
             HEIGHT
         ),
 
-        (0, 0, 0, 0)
+        (
+            0,
+            0,
+            0,
+            0
+        )
+
     )
 
     glow_draw = ImageDraw.Draw(
@@ -682,44 +945,61 @@ def render_frame(
     # Blocks
     # --------------------------------------------------------
 
-    for block in active_blocks:
+    for block in blocks:
 
         draw_block(
+
             draw,
+
             glow_draw,
+
             block
+
         )
 
     # --------------------------------------------------------
-    # Glow
+    # Apply glow
     # --------------------------------------------------------
 
     glow = glow.filter(
-        ImageFilter.GaussianBlur(6)
+
+        ImageFilter.GaussianBlur(
+            6
+        )
+
     )
 
-    image.alpha_composite(glow)
+    image.alpha_composite(
+        glow
+    )
 
     # --------------------------------------------------------
-    # Redraw blocks over glow
+    # Redraw blocks
     # --------------------------------------------------------
 
-    draw = ImageDraw.Draw(image)
+    draw = ImageDraw.Draw(
+        image
+    )
 
-    for block in active_blocks:
+    for block in blocks:
 
-        if block.y < TOP - CELL * 3:
+        if not block.active:
             continue
 
-        x = int(block.x)
+        x = int(
+            block.x
+        )
 
-        y = int(block.y)
+        y = int(
+            block.y
+        )
 
         color = LEVEL_COLORS[
             block.level
         ]
 
         draw.rounded_rectangle(
+
             (
                 x,
                 y,
@@ -730,43 +1010,32 @@ def render_frame(
             radius=3,
 
             fill=color
+
         )
 
     # --------------------------------------------------------
-    # Bottom status
+    # Status
     # --------------------------------------------------------
 
     draw_status(
+
         draw,
+
         status
+
     )
 
-    return image.convert("RGB")
-
-
-# ============================================================
-# EASING
-# ============================================================
-
-def ease_out_cubic(t):
-
-    t = max(
-        0.0,
-        min(1.0, t)
+    return image.convert(
+        "RGB"
     )
 
-    return 1 - (
-        1 - t
-    ) ** 3
-
 
 # ============================================================
-# GENERATE WEEK ANIMATION
+# GENERATE ANIMATION
 # ============================================================
 
-def animate_week(
+def generate_animation(
     weeks,
-    week_index,
     blocks,
     total_contributions
 ):
@@ -774,20 +1043,28 @@ def animate_week(
     frames = []
 
     # --------------------------------------------------------
-    # Number of frames
+    # Calculate total duration
     # --------------------------------------------------------
 
-    FALL_FRAMES = 55
-    SETTLE_FRAMES = 15
-    HOLD_FRAMES = 8
+    last_delay = 0
+
+    if blocks:
+
+        last_delay = max(
+            block.delay
+            for block in blocks
+        )
 
     total_frames = (
-        FALL_FRAMES +
-        SETTLE_FRAMES
+
+        last_delay
+        + FALL_FRAMES
+        + SETTLE_FRAMES
+
     )
 
     # --------------------------------------------------------
-    # Animate
+    # Animation
     # --------------------------------------------------------
 
     for frame in range(
@@ -795,69 +1072,62 @@ def animate_week(
     ):
 
         update_blocks(
+
             blocks,
+
             frame
+
+        )
+
+        active_count = sum(
+
+            1
+            for block in blocks
+            if block.active
+
         )
 
         status = (
-            f"week {week_index + 1:02d} / "
-            f"{len(weeks):02d}"
-            "   •   gravity active"
+
+            f"{active_count} blocks falling"
+
         )
 
         frames.append(
+
             render_frame(
+
                 weeks,
+
                 blocks,
+
                 total_contributions,
+
                 status
+
             )
+
         )
 
     # --------------------------------------------------------
-    # Hold settled state
+    # Final hold
     # --------------------------------------------------------
 
     final = render_frame(
+
         weeks,
+
         blocks,
+
         total_contributions,
-        f"week {week_index + 1:02d} / "
-        f"{len(weeks):02d}"
-        "   •   settled"
+
+        "contribution history settled"
+
     )
 
     for _ in range(
         HOLD_FRAMES
     ):
-
-        frames.append(
-            final.copy()
-        )
-
-    return frames
-
-
-# ============================================================
-# FINAL HOLD
-# ============================================================
-
-def final_animation(
-    weeks,
-    all_blocks,
-    total_contributions
-):
-
-    frames = []
-
-    final = render_frame(
-        weeks,
-        all_blocks,
-        total_contributions,
-        "52 weeks  •  contribution history settled"
-    )
-
-    for _ in range(45):
 
         frames.append(
             final.copy()
@@ -873,8 +1143,11 @@ def final_animation(
 def save_gif(frames):
 
     os.makedirs(
+
         "assets",
+
         exist_ok=True
+
     )
 
     output = (
@@ -882,6 +1155,7 @@ def save_gif(frames):
     )
 
     frames[0].save(
+
         output,
 
         save_all=True,
@@ -895,6 +1169,7 @@ def save_gif(frames):
         loop=0,
 
         optimize=True
+
     )
 
     return output
@@ -907,6 +1182,7 @@ def save_gif(frames):
 def main():
 
     print()
+
     print(
         "Fetching GitHub contribution data..."
     )
@@ -914,10 +1190,6 @@ def main():
     weeks, total_contributions = (
         get_contributions()
     )
-
-    # --------------------------------------------------------
-    # GitHub normally returns 53 weeks
-    # --------------------------------------------------------
 
     weeks = weeks[
         :MAX_WEEKS
@@ -934,74 +1206,41 @@ def main():
 
     print()
 
-    frames = []
-
-    all_blocks = []
-
     # --------------------------------------------------------
-    # Animate every week
+    # Create ALL blocks
     # --------------------------------------------------------
 
-    for week_index, week in enumerate(
+    blocks = create_blocks(
         weeks
-    ):
+    )
 
-        print(
-            f"Animating week "
-            f"{week_index + 1}/"
-            f"{len(weeks)}..."
-        )
-
-        week_blocks = (
-            create_week_blocks(
-                week_index,
-                week
-            )
-        )
-
-        # ----------------------------------------------------
-        # IMPORTANT:
-        #
-        # Keep previously settled blocks.
-        # Add this week's blocks.
-        # ----------------------------------------------------
-
-        all_blocks.extend(
-            week_blocks
-        )
-
-        week_frames = animate_week(
-            weeks,
-            week_index,
-            week_blocks,
-            total_contributions
-        )
-
-        # ----------------------------------------------------
-        # Re-render using ALL blocks so previous weeks
-        # remain visible.
-        # ----------------------------------------------------
-
-        for frame in week_frames:
-
-            # We don't need to reconstruct physics here.
-            # The frame already represents the current week.
-
-            frames.append(frame)
-
-    # --------------------------------------------------------
-    # Final frame
-    # --------------------------------------------------------
-
-    frames.extend(
-        final_animation(
-            weeks,
-            all_blocks,
-            total_contributions
-        )
+    print(
+        f"Created {len(blocks)} "
+        "contribution blocks."
     )
 
     print()
+
+    print(
+        "Starting sequential gravity..."
+    )
+
+    # --------------------------------------------------------
+    # Generate
+    # --------------------------------------------------------
+
+    frames = generate_animation(
+
+        weeks,
+
+        blocks,
+
+        total_contributions
+
+    )
+
+    print()
+
     print(
         f"Generated {len(frames)} frames."
     )
@@ -1015,6 +1254,7 @@ def main():
     )
 
     print()
+
     print(
         "======================================"
     )
@@ -1038,11 +1278,16 @@ def main():
     )
 
     print(
-        f"Size:   {WIDTH} × {HEIGHT}"
+        f"Size: {WIDTH} × {HEIGHT}"
     )
 
     print()
 
 
+# ============================================================
+# RUN
+# ============================================================
+
 if __name__ == "__main__":
+
     main()
